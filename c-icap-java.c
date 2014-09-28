@@ -17,7 +17,7 @@
 #define CIJ_WARN_LEVEL 3
 #define CIJ_MESSAGE_LEVEL 5
 #define CIJ_INFO_LEVEL 7
-#define CIJ_DEBUG_LEVEL 9
+#define CIJ_DEBUG_LEVEL CI_DEBUG_LEVEL
 
 #if 1
     #define cij_debug_printf(lev,msg, ...) ci_debug_printf(1, "(%d):%s():L%04d: "msg"\n", getpid(), __func__, __LINE__, ## __VA_ARGS__)
@@ -32,8 +32,8 @@ typedef struct jDataStruct {
     JavaVM * jvm;
     JavaVMOption jvmOptions[4];
     jclass jIcapClass;
-    const char * name;
-    const int mod_type;
+    char * name;
+    int mod_type;
     jmethodID jInitService;
     jmethodID jPostInitService;
     jmethodID jCloseService;
@@ -152,7 +152,7 @@ ci_service_module_t * load_java_module(char * service_file) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find field '%s'.", CIJ_CLASS_MOD_TYPE);
         goto FAIL_TO_LOAD_SERVICE;
     }
-    jint mod_type = jni->GetStaticIntField(&jni, cls, mod_type_fid);
+    jint mod_type = (*jni)->GetStaticIntField(jni, cls, mod_type_fid);
     jdata->mod_type = mod_type;
 
     //TODO: get <init> for init_request_data
@@ -160,15 +160,6 @@ ci_service_module_t * load_java_module(char * service_file) {
     //TODO: get   int preview(String preview){} for check_preview_handler
 
     //TODO: get   byte[] service(byte[] data){} for end_of_data_handler
-
-    //get init_service()
-    jfieldID mod_type_fid = (*jni)->GetStaticFieldID(jni, cls, "si", CIJ_CLASS_MOD_TYPE);
-    if (mod_type_fid == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find field '%s'.", CIJ_CLASS_MOD_TYPE);
-        goto FAIL_TO_LOAD_SERVICE;
-    }
-    jint mod_type = jni->GetStaticIntField(&jni, cls, mod_type_fid);
-    jdata->mod_type = mod_type;
 
     //TODO: stdout,stdin => c-icap's std
 
@@ -184,7 +175,7 @@ ci_service_module_t * load_java_module(char * service_file) {
     service->mod_service_io = java_service_io;
     service->mod_name = name;
     service->mod_type = ICAP_REQMOD | ICAP_RESPMOD;
-    ci_debug_printf(1, "OK service %s loaded\n", service_file);
+    cij_debug_printf(CIJ_MESSAGE_LEVEL, "OK service %s loaded\n", service_file);
     ci_dyn_array_add(enviroments, name, jdata, sizeof(jData_t *));
     return service;
 
