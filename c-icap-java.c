@@ -34,14 +34,18 @@ typedef struct jDataStruct {
     jclass jIcapClass;
     char * name;
     int mod_type;
-    jmethodID jInitService;
-    jmethodID jPostInitService;
-    jmethodID jCloseService;
-    jmethodID jInitRequestData;
-    jmethodID jReleaseRequestData;
-    jmethodID jCheckPreviewHandler;
-    jmethodID jEndOfDataHandler;
-    jmethodID jServiceIO;
+    jmethodID jServiceConstructor;
+    jmethodID jInitialize;
+    jmethodID jPreview;
+    jmethodID jService;
+//    jmethodID jInitService;
+//    jmethodID jPostInitService;
+//    jmethodID jCloseService;
+//    jmethodID jInitRequestData;
+//    jmethodID jReleaseRequestData;
+//    jmethodID jCheckPreviewHandler;
+//    jmethodID jEndOfDataHandler;
+//    jmethodID jServiceIO;
     u_int32_t times_served;
 } jData_t;
 
@@ -156,10 +160,47 @@ ci_service_module_t * load_java_module(char * service_file) {
     jdata->mod_type = mod_type;
 
     //TODO: get <init> for init_request_data
+    {
+    jmethodID init = (*jni)->GetMethodID(jni, cls, "<init>", "()V");
+    if (init == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method '%s()'.", name);
+        goto FAIL_TO_LOAD_SERVICE;
+    }
+    jdata->jServiceConstructor = init;
+    }
+
+    //TODO: get initialize(String,String[]) for init_request_data
+    {
+    jmethodID initialize = (*jni)->GetMethodID(jni, cls, "initialize", "(Ljava/lang/String;[Ljava/lang/String;)V");
+    if (initialize == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'initialize(String, String[])'.");
+        goto FAIL_TO_LOAD_SERVICE;
+    }
+    jdata->jInitialize = initialize;
+    }
 
     //TODO: get   int preview(String preview){} for check_preview_handler
+    {
+    jmethodID preview = (*jni)->GetMethodID(jni, cls, "preview", "([B[Ljava/lang/String;)I");
+    if (preview == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method 'preview(byte[], java.lang.String[])'.");
+        goto FAIL_TO_LOAD_SERVICE;
+    }
+    jdata->jPreview = preview;
+    }
+    /*
+     public void initialize(java.lang.String, java.lang.String[]);
+      descriptor: (Ljava/lang/String;[Ljava/lang/String;)V
 
+    public int preview(byte[], java.lang.String[]);
+      descriptor: ([B[Ljava/lang/String;)I
+
+    public byte[] service(byte[], java.lang.String[]);
+      descriptor: ([B[Ljava/lang/String;)[B
+*/
+    //TODO: get   void ini(byte[] data){} for end_of_data_handler
     //TODO: get   byte[] service(byte[] data){} for end_of_data_handler
+    //TODO: get   byte[] preview(byte[] data){} for end_of_data_handler
 
     //TODO: stdout,stdin => c-icap's std
 
