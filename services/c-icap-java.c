@@ -1,3 +1,11 @@
+/**
+ * @file c-icap-java.c
+ * @brief c-icap module for java handler
+ *
+ * @author SYA-KE
+ * @date 2014-10-01
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -38,20 +46,10 @@ typedef struct jDataStruct {
     jmethodID jInitialize;
     jmethodID jPreview;
     jmethodID jService;
-//    jmethodID jInitService;
-//    jmethodID jPostInitService;
-//    jmethodID jCloseService;
-//    jmethodID jInitRequestData;
-//    jmethodID jReleaseRequestData;
-//    jmethodID jCheckPreviewHandler;
-//    jmethodID jEndOfDataHandler;
-//    jmethodID jServiceIO;
-    u_int32_t times_served;
 } jData_t;
 
 typedef struct jServiceDataStruct {
-    jData_t * jdata;
-    u_int32_t request_id;
+    jData_t * jdata;//includes JVM
     jobject instance;
 } jServiceData_t;
 
@@ -87,16 +85,45 @@ ci_dyn_array_t * enviroments;
 const char * JAVA_CLASS_PATH;
 const char * JAVA_LIBRARY_PATH;
 
+/**
+ * Called When c-icap proccess start.<br>
+ * prev = none<br>
+ * next = load_java_module(char * service_file)<br>
+ *
+ * @see load_java_module(char * service_file)
+ * @param server_conf a pointer to the server configurations.
+ * @return CI_OK
+ */
 int init_java_handler(struct ci_server_conf * server_conf) {
     enviroments = ci_dyn_array_new(MAX_ENVIRONMENTS_SIZE);//FREEME
     JAVA_CLASS_PATH = server_conf->SERVICES_DIR;
     return CI_OK;
 }
 
+/**
+ * Called When all c-icap-java services's "java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)" has called.<br>
+ * prev = java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)<br>
+ * next = java_post_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)<br>
+ *
+ * @see java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)
+ * @see java_post_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)
+ * @param server_conf a pointer to the server configurations.
+ * @return CI_OK
+ */
 int post_init_java_handler(struct ci_server_conf * server_conf) {
     return CI_OK;
 }
 
+/**
+ * Called by each service scripts. initialize JVM.<br>
+ * prev = init_java_handler(struct ci_server_conf * server_conf)<br>
+ * next = java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)<br>
+ *
+ * @see init_java_handler(struct ci_server_conf * server_conf)
+ * @see java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)
+ * @param service_file
+ * @return
+ */
 ci_service_module_t * load_java_module(char * service_file) {
     ci_service_module_t * service = NULL;
     jData_t * jdata = NULL;
@@ -106,7 +133,6 @@ ci_service_module_t * load_java_module(char * service_file) {
         cij_debug_printf(CIJ_ERROR_LEVEL,"Failed to allocate memory for service %s",service_file);
         return NULL;
     }
-    jdata->times_served = 0;
 
     //set service file name to SERVICE NAME
     const char * service_file_name = basename(service_file);
@@ -229,6 +255,15 @@ FAIL_TO_LOAD_SERVICE:
     return NULL;
 }
 
+/**
+ * kills JVM. used at release_java_handler() .<br>
+ *
+ * @see release_java_handler()
+ * @param data
+ * @param name
+ * @param value
+ * @return JNI_OK = 0 if success
+ */
 int killVM(void *data, const char *name, const void * value) {
     const jData_t * jdata = (jData_t *)value;
     const char * icapName = jdata->name;
@@ -239,27 +274,58 @@ int killVM(void *data, const char *name, const void * value) {
     return ret;
 }
 
+/**
+ * Call killVM(void *data, const char *name, const void * value) to each JVMs.<br>
+ * prev = java_close_service()<br>
+ * next = none.<br>
+ *
+ * @see java_close_service()
+ */
 void release_java_handler() {
     //iterate and kill all JavaVMs
     ci_dyn_array_iterate(enviroments, NULL, killVM);
     return;
 }
 
+/**
+ * Called after load_java_module(char * service_file) .<br>
+ * initialize service OPTIONS parameter.<br>
+ * prev = load_java_module(char * service_file)<br>
+ * next =post_init_java_handler(struct ci_server_conf * server_conf)<br>
+ *
+ * @param srv_xdata a pointer holds service parameter.
+ * @param server_conf a pointer of server config.
+ * @return CI_SERVICE_OK
+ */
 int java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf) {
     ci_service_set_preview(srv_xdata, 1024);
     ci_service_enable_204(srv_xdata);
     ci_service_set_transfer_preview(srv_xdata, "*");
-    return 0;
+    return CI_SERVICE_OK;
 }
 
+/**
+ * initialize service OPTIONS parameter after post_init_java_handler(struct ci_server_conf * server_conf) called.<br>
+ * prev = post_init_java_handler(struct ci_server_conf * server_conf)<br>
+ * next = SERVICE IN<br>
+ *
+ * @see post_init_java_handler(struct ci_server_conf * server_conf)
+ * @param srv_xdata a pointer holds service parameter.
+ * @param server_conf a pointer of server config.
+ * @return CI_SERVICE_OK
+ */
 int java_post_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf) {
     return 0;
 }
 
-void java_close_service() {
-    //nop
-}
-
+/**
+ * initialize ICAP Request.<br>
+ * prev = recv Request<br>
+ * next = java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req)<br>
+ *
+ * @see java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req)
+ * @param req a pointer of request data.
+ */
 void * java_init_request_data(ci_request_t * req) {
     const int REQ_TYPE = ci_req_type(req);
     const char * METHOD_TYPE = ci_method_string(REQ_TYPE);//Don't free!
@@ -283,12 +349,20 @@ void * java_init_request_data(ci_request_t * req) {
     return (void *) NULL;
 }
 
-void java_release_request_data(void * data) {
-    jServiceData_t * jServiceData = (jServiceData_t *)data;
-    JNIEnv * jni = (jServiceData->jdata)->jni;
-    (*jni)->DeleteLocalRef(jni, jServiceData->instance);
-}
-
+/**
+ * Preview HTTP Body and determine hook or unlock the request.<br>
+ * prev = java_init_request_data(ci_request_t * req)<br>
+ * MOD_CONTINUE = java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)<br>
+ * ALLOW204 = java_release_request_data(void * data)<br>
+ *
+ * @see java_init_request_data(ci_request_t * req)
+ * @see java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)
+ * @see java_release_request_data(void * data)
+ * @param preview_data preview body.
+ * @param preview_data_len preview body byte length.
+ * @param req a pointer of request data.
+ * @return CI_MOD_ALLOW204 if unhook the request. CI_MOD_CONTINUE if hook the request.
+ */
 int java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req) {
     //check preview data
     //hasbody
@@ -297,13 +371,28 @@ int java_check_preview_handler(char * preview_data, int preview_data_len, ci_req
     return CI_MOD_CONTINUE;
 }
 
-int java_end_of_data_handler(ci_request_t * req) {
-    //replace headers
-    return CI_MOD_DONE;
-}
-
+/**
+ * send-recv ICAP Request body buffer.<br>
+ * prev = java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req) or java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)<br>
+ * next = java_end_of_data_handler(ci_request_t * req) or java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)<br>
+ * jumps = java_release_request_data(void * data) when return CI_MOD_ALLOW204<br>
+ *<br>
+ * Calls java_end_of_data_handler(ci_request_t * req) when iseof is true.<br>
+ * Calls java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req) recursively while iseof is not true.<br>
+ *
+ * @see java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req)
+ * @see java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)
+ * @see java_end_of_data_handler(ci_request_t * req)
+ * @param wbuf buffer to write body to send
+ * @param wlen a pointer of wbuf byte length
+ * @param rbuf buffer to write body to recv
+ * @param rlen a pointer of rbug byte length
+ * @param iseof identify end of body
+ * @param req a pointer of request data.
+ * @return CI_OK if modification is ok. (if *wlen equals CI_EOF then modification is OK and no write anymore)
+ */
 int java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req) {
-    int ret;
+    int ret = CI_OK;
 
     if (rlen && rbuf) {
         //call
@@ -313,4 +402,44 @@ int java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof,
         //call
     }
     return ret;
+}
+/**
+ * Called when if wlen == CI_EOF in java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)<br>
+ * prev = java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)<br>
+ * next = java_release_request_data(void * data)<br>
+ *
+ * @see java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req)
+ * @see java_release_request_data(void * data)
+ * @param req a pointer of request data.
+ * @return CI_OK if continue modification, CI_MOD_DONE if modification has done
+ */
+int java_end_of_data_handler(ci_request_t * req) {
+    //replace headers
+    return CI_MOD_DONE;
+}
+
+/**
+ * finalize ICAP request.<br>
+ * prev = java_end_of_data_handler(ci_request_t * req)<br>
+ * next = send Request<br>
+ *
+ * @see java_end_of_data_handler(ci_request_t * req)
+ * @param data service_data
+ */
+void java_release_request_data(void * data) {
+    jServiceData_t * jServiceData = (jServiceData_t *)data;
+    JNIEnv * jni = (jServiceData->jdata)->jni;
+    (*jni)->DeleteLocalRef(jni, jServiceData->instance);
+}
+
+/**
+ * close service.<br>
+ *<br>
+ * prev = STOP SIGNAL FROM PIPE or SIGTERM?<br>
+ * next = release_java_handler()<br>
+ *
+ * @see release_java_handler()
+ */
+void java_close_service() {
+    //nop
 }
