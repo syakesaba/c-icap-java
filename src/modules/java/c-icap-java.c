@@ -67,6 +67,11 @@ int java_check_preview_handler(char * preview_data, int preview_data_len, ci_req
 int java_end_of_data_handler(ci_request_t * req);
 int java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof, ci_request_t * req);
 
+/**
+ * Declare c-icap module handler.<br>
+ * <br>
+ * TO LOAD: <b>Module service_handler srv_java.so</b>
+ */
 CI_DECLARE_DATA service_handler_module_t module = {
     "java_handler",
     ".class",
@@ -77,7 +82,7 @@ CI_DECLARE_DATA service_handler_module_t module = {
     NULL // TODO: conf-table
 };
 
-ci_dyn_array_t * enviroments;
+ci_dyn_array_t * enviroments; //JVM environments
 #define MAX_ENVIRONMENTS_SIZE 256
 #define CIJ_CLASS_MOD_TYPE "MOD_TYPE"
 
@@ -214,6 +219,16 @@ ci_service_module_t * load_java_module(char * service_file) {
     }
     jdata->jPreview = preview;
     }
+
+    //TODO: get byte[] service(byte[], java.lang.String[]){} for end_of_data
+    {
+    jmethodID service = (*jni)->GetMethodID(jni, cls, "service", "([B[Ljava/lang/String;)[B");
+    if (service == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method 'service(byte[], java.lang.String[])'.");
+        goto FAIL_TO_LOAD_SERVICE;
+    }
+    jdata->jService = service;
+    }
     /*
      public void initialize(java.lang.String, java.lang.String[]);
       descriptor: (Ljava/lang/String;[Ljava/lang/String;)V
@@ -223,7 +238,7 @@ ci_service_module_t * load_java_module(char * service_file) {
 
     public byte[] service(byte[], java.lang.String[]);
       descriptor: ([B[Ljava/lang/String;)[B
-*/
+    */
     //TODO: get   void ini(byte[] data){} for end_of_data_handler
     //TODO: get   byte[] service(byte[] data){} for end_of_data_handler
     //TODO: get   byte[] preview(byte[] data){} for end_of_data_handler
