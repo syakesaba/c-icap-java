@@ -16,7 +16,6 @@ Debug/
 Release/
 trash/
 bin/
-/doc/
 # Object files
 *.o
 *.ko
