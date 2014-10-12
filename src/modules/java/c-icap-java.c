@@ -239,10 +239,6 @@ ci_service_module_t * load_java_module(char * service_file) {
     public byte[] service(byte[], java.lang.String[]);
       descriptor: ([B[Ljava/lang/String;)[B
     */
-    //TODO: get   void ini(byte[] data){} for end_of_data_handler
-    //TODO: get   byte[] service(byte[] data){} for end_of_data_handler
-    //TODO: get   byte[] preview(byte[] data){} for end_of_data_handler
-
     //TODO: stdout,stdin => c-icap's std
 
     service->mod_data = (void *)jdata;
@@ -347,19 +343,40 @@ void * java_init_request_data(ci_request_t * req) {
 
     ci_headers_list_t *hdrs = NULL;
 
+    //identify reqmod or respmod or else
     if (REQ_TYPE == ICAP_REQMOD) {
         hdrs = ci_http_request_headers(req);
     } else if (REQ_TYPE == ICAP_RESPMOD) {
         hdrs = ci_http_response_headers(req);
     } else if (REQ_TYPE == ICAP_OPTIONS){
-        // something? ;
-        return NULL;
+        return NULL;//pass
     } else {
-        // UNKNOWN protocol
+        //UNKNOWN ICAP METHOD
+        return NULL;//pass
+    }
+
+    //create service_data
+    jServiceData_t * jServiceData = NULL;
+    jServiceData = (jServiceData_t *)malloc(sizeof(jServiceData_t));
+    if (jServiceData == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Unable to allocate memory for jServiceData_t !");
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Dropping request...");
         return NULL;
     }
-    //identify reqmod or respmod or else
+    //retribute Java environment from mod_name
+    const char * mod_name = (req->current_service_mod)->mod_name;
+    jData_t * jdata = (jData_t *)ci_dyn_array_search(enviroments, mod_name);
+    if (jdata == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Invalid mod_name %s is not in environments array.", mod_name);
+        free(jServiceData);
+        return NULL;
+    }
+    jServiceData->jdata = jdata;
+
+    //create instance.
+    JNIEnv * jni = jdata->jni;
     //create new instance calling constructor;
+
     //XXX: init(int mod_type, String[] headers)
     return (void *) NULL;
 }
