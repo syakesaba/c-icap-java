@@ -210,7 +210,7 @@ ci_service_module_t * load_java_module(char * service_file) {
     jdata->jInitialize = initialize;
     }
 
-    //TODO: get   int preview(String preview){} for check_preview_handler
+    //TODO: get  int preview(byte[], java.lang.String[]) for check_preview_handler
     {
     jmethodID preview = (*jni)->GetMethodID(jni, cls, "preview", "([B[Ljava/lang/String;)I");
     if (preview == NULL) {
@@ -336,6 +336,7 @@ int java_post_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf
  *
  * @see java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req)
  * @param req a pointer of request data.
+ * @return service_data instance if OK else returns NULL(pass)
  */
 void * java_init_request_data(ci_request_t * req) {
     const int REQ_TYPE = ci_req_type(req);
@@ -349,9 +350,11 @@ void * java_init_request_data(ci_request_t * req) {
     } else if (REQ_TYPE == ICAP_RESPMOD) {
         hdrs = ci_http_response_headers(req);
     } else if (REQ_TYPE == ICAP_OPTIONS){
+        cij_debug_printf(CIJ_INFO_LEVEL, "ICAP OPTIONS comes. ignoring...");
         return NULL;//pass
     } else {
         //UNKNOWN ICAP METHOD
+        cij_debug_printf(CIJ_INFO_LEVEL, "INVALID ICAP METHOD (NO. %d) has come. ignoring...", REQ_TYPE);
         return NULL;//pass
     }
 
@@ -371,14 +374,28 @@ void * java_init_request_data(ci_request_t * req) {
         free(jServiceData);
         return NULL;
     }
+
+    //attach service instance to JVM
     jServiceData->jdata = jdata;
 
     //create instance.
     JNIEnv * jni = jdata->jni;
     //create new instance calling constructor;
-
-    //XXX: init(int mod_type, String[] headers)
-    return (void *) NULL;
+    jobject jInstance = (*jni)->NewObject(jni, jdata->jIcapClass, jdata->jServiceConstructor);
+    //create new HTTP headers array for java
+    jobjectArray jHeaders = (*jni)->NewObjectArray(jni,hdrs->used,jInstance,jstring);
+    int i;
+    for(i=0;i<hdrs->used;i++) {
+        (*jni)->SetObjectArrayElement(jni,i,jHeaders,(*jni)->NewStringUTF(hdrs->headers[i]));
+    }
+    //int initialize(String,String[])
+    jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jInitialize, (*jni)->NewStringUTF(METHOD_TYPE), jHeaders);
+    if (status) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not zero.", mod_name);
+        return NULL;
+    }
+    jServiceData->instance = jInstance;
+    return (void *)jServiceData;
 }
 
 /**
@@ -396,6 +413,16 @@ void * java_init_request_data(ci_request_t * req) {
  * @return CI_MOD_ALLOW204 if unhook the request. CI_MOD_CONTINUE if hook the request.
  */
 int java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req) {
+    jServiceData_t * jServiceData = (jServiceData_t *)ci_service_data(req);
+    JNIEnv * jni = jServiceData->jdata->jni;
+    jData_t * jdata = jServiceData.jdata;
+    jobject jInstance = jServiceData->instance;
+    //preview(byte[], java.lang.String[])
+    jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jPreview, jni->, jHeaders);
+    if (status) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not zero.", mod_name);
+        return NULL;
+    }
     //check preview data
     //hasbody
     //lock or  unlock
