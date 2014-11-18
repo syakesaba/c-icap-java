@@ -390,6 +390,7 @@ void * java_init_request_data(ci_request_t * req) {
     jclass jClass_String = (*jni)->FindClass("java/lang/String");
     jobjectArray jHeaders = (*jni)->NewObjectArray(jni,hdrs->used,jClass_String);
     int i;
+    //なんかUTF的な処理がいる？
     for(i=0;i<hdrs->used;i++) {
         (*jni)->SetObjectArrayElement(jni,i,jHeaders,(*jni)->NewStringUTF(hdrs->headers[i]));
     }
