@@ -1,7 +1,13 @@
-public interface iService {
-	public void initialize(final String mod_type, final String[] headers);
-	public int preview(final byte[] data, final String[] headers);
-	public byte[] service(final byte[] body, String[] headers);
+class iService {
+    public iService(final String mod_type, final String[] headers) {
+        return;
+    }
+    public int preview(final byte[] data) {
+        return 1;
+    }
+    public byte[] service(final byte[] body) {
+        return null;
+    }
 }
 /*
   <init>();

@@ -11,6 +11,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+//---beware JNI Version
 #include "jni.h"
 
 #include "c_icap/c-icap.h"
@@ -27,6 +28,7 @@
 #define CIJ_INFO_LEVEL 7
 #define CIJ_DEBUG_LEVEL CI_DEBUG_LEVEL
 
+//---DEBUG util
 #if 1
     #define cij_debug_printf(lev,msg, ...) ci_debug_printf(1, "(%d):%s():L%04d: "msg"\n", getpid(), __func__, __LINE__, ## __VA_ARGS__)
 #else
@@ -34,16 +36,21 @@
 #endif
 
 #define MAX_JVM_OPTIONS 4
+#define MAX_CLASS_NAME 1024
 
+/**
+ * one ICAP service handles one JVIEnv (Java Process).
+ * S(mod_type,headers)
+ * S.preview(byte[])
+ * S.service(byte[])
+ */
 typedef struct jDataStruct {
     JNIEnv * jni;
     JavaVM * jvm;
-    JavaVMOption jvmOptions[4];
     jclass jIcapClass;
     char * name;
     int mod_type;
     jmethodID jServiceConstructor;
-    jmethodID jInitialize;
     jmethodID jPreview;
     jmethodID jService;
 } jData_t;
@@ -74,7 +81,7 @@ int java_service_io(char * wbuf, int * wlen, char * rbuf, int * rlen, int iseof,
  */
 CI_DECLARE_DATA service_handler_module_t module = {
     "java_handler",
-    ".class",
+    ".class",//the target is a compiled java class file.
     init_java_handler,
     post_init_java_handler,
     release_java_handler,
@@ -85,7 +92,6 @@ CI_DECLARE_DATA service_handler_module_t module = {
 ci_dyn_array_t * enviroments; //JVM environments
 #define MAX_ENVIRONMENTS_SIZE 256
 #define CIJ_CLASS_MOD_TYPE "MOD_TYPE"
-
 
 const char * JAVA_CLASS_PATH;
 const char * JAVA_LIBRARY_PATH;
@@ -147,11 +153,16 @@ ci_service_module_t * load_java_module(char * service_file) {
 
     {
     //set CLASSPATH
-    JavaVMOption * options = jdata->jvmOptions;
-    sprintf(options[0].optionString, "-Djava.class.path=%s",JAVA_CLASS_PATH);
-    //options[1].optionString = "-verbose:jni";
-    //options[2].optionString = sprintf("-Djava.library.path=%s",LIBRARIES_PATH);
-    //options[3].optionString = "";
+    JavaVMOption options[1];
+    int ret = asprintf(options[0].optionString, "-Djava.class.path=%s",JAVA_CLASS_PATH);//FREEME
+    //"-verbose:jni";
+    //"-Djava.library.path=%s.jar"
+
+    if (ret < 0) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to allocate memory for service '%s'.", name);
+        free(options[0].optionString);
+        goto FAIL_TO_LOAD_SERVICE;
+    }
 
     //create VM
     JavaVMInitArgs jvmInitArgs;
@@ -160,6 +171,7 @@ ci_service_module_t * load_java_module(char * service_file) {
     jvmInitArgs.version = JNI_VERSION_1_6;
     jvmInitArgs.ignoreUnrecognized = JNI_FALSE;
     jint ret = JNI_CreateJavaVM(&(jdata->jvm), (void **)&(jdata->jni), &jvmInitArgs);
+    free(options[0].optionString);
     if (ret != JNI_OK) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to setup JavaVM(%d).", ret);
         goto FAIL_TO_LOAD_SERVICE;
@@ -170,8 +182,11 @@ ci_service_module_t * load_java_module(char * service_file) {
 
     //find class
     {
-    const char * className = NULL;
-    snprintf(className, "L%s;", name);
+    const char className[MAX_CLASS_NAME];
+    if (snprintf(className, "L%s;", name) < 0) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to setup className string for java class '%s'.", className);
+        goto FAIL_TO_LOAD_SERVICE;
+    }
     jclass service_class = (*jni)->FindClass(jni, className);
     if (service_class == NULL) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find java class '%s'.", className);
@@ -180,7 +195,7 @@ ci_service_module_t * load_java_module(char * service_file) {
     jdata->jIcapClass = service_class;
     }
     jclass cls = jdata->jIcapClass;
-
+/*
     //identify REQMOD, RESPMOD 'int class.MOD_TYPE'
     jfieldID mod_type_fid = (*jni)->GetStaticFieldID(jni, cls, "si", CIJ_CLASS_MOD_TYPE);
     if (mod_type_fid == NULL) {
@@ -189,10 +204,9 @@ ci_service_module_t * load_java_module(char * service_file) {
     }
     jint mod_type = (*jni)->GetStaticIntField(jni, cls, mod_type_fid);
     jdata->mod_type = mod_type;
-
-    //TODO: get <init> for init_request_data
+*/
     {
-    jmethodID init = (*jni)->GetMethodID(jni, cls, "<init>", "()V");
+    jmethodID init = (*jni)->GetMethodID(jni, cls, "<init>", "(Ljava/lang/String;[Ljava/lang/String;)V");
     if (init == NULL) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method '%s()'.", name);
         goto FAIL_TO_LOAD_SERVICE;
@@ -200,45 +214,35 @@ ci_service_module_t * load_java_module(char * service_file) {
     jdata->jServiceConstructor = init;
     }
 
-    //TODO: get initialize(String,String[]) for init_request_data
     {
-    jmethodID initialize = (*jni)->GetMethodID(jni, cls, "initialize", "(Ljava/lang/String;[Ljava/lang/String;)V");
-    if (initialize == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'initialize(String, String[])'.");
-        goto FAIL_TO_LOAD_SERVICE;
-    }
-    jdata->jInitialize = initialize;
-    }
-
-    //TODO: get  int preview(byte[], java.lang.String[]) for check_preview_handler
-    {
-    jmethodID preview = (*jni)->GetMethodID(jni, cls, "preview", "([B[Ljava/lang/String;)I");
+    jmethodID preview = (*jni)->GetMethodID(jni, cls, "preview", "([B)I");
     if (preview == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method 'preview(byte[], java.lang.String[])'.");
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'preview(byte[])'.");
         goto FAIL_TO_LOAD_SERVICE;
     }
     jdata->jPreview = preview;
     }
 
-    //TODO: get byte[] service(byte[], java.lang.String[]){} for end_of_data
     {
-    jmethodID service = (*jni)->GetMethodID(jni, cls, "service", "([B[Ljava/lang/String;)[B");
+    jmethodID service = (*jni)->GetMethodID(jni, cls, "service", "([B)[B");
     if (service == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method 'service(byte[], java.lang.String[])'.");
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'service(byte[], java.lang.String[])'.");
         goto FAIL_TO_LOAD_SERVICE;
     }
     jdata->jService = service;
     }
     /*
-     public void initialize(java.lang.String, java.lang.String[]);
-      descriptor: (Ljava/lang/String;[Ljava/lang/String;)V
-
-    public int preview(byte[], java.lang.String[]);
-      descriptor: ([B[Ljava/lang/String;)I
-
-    public byte[] service(byte[], java.lang.String[]);
-      descriptor: ([B[Ljava/lang/String;)[B
+    Compiled from "iService.java"
+    class iService {
+      public iService(java.lang.String, java.lang.String[]);
+        descriptor: (Ljava/lang/String;[Ljava/lang/String;)V
+      public int preview(byte[]);
+        descriptor: ([B)I
+      public byte[] service(byte[]);
+        descriptor: ([B)[B
+    }
     */
+
     //TODO: stdout,stdin => c-icap's std
 
     service->mod_data = (void *)jdata;
@@ -254,7 +258,10 @@ ci_service_module_t * load_java_module(char * service_file) {
     service->mod_name = name;
     service->mod_type = ICAP_REQMOD | ICAP_RESPMOD;
     cij_debug_printf(CIJ_MESSAGE_LEVEL, "OK service %s loaded\n", service_file);
-    ci_dyn_array_add(enviroments, name, jdata, sizeof(jData_t *));
+    if (ci_dyn_array_add(enviroments, name, jdata, sizeof(jData_t *)) == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed adding service '%s' to dyn-array.", name);
+        goto FAIL_TO_LOAD_SERVICE;
+    }
     return service;
 
 FAIL_TO_LOAD_SERVICE:
@@ -378,22 +385,16 @@ void * java_init_request_data(ci_request_t * req) {
     //attach service instance to JVM
     jServiceData->jdata = jdata;
 
-    //create instance.
     JNIEnv * jni = jdata->jni;
-    //create new instance calling constructor;
-    jobject jInstance = (*jni)->NewObject(jni, jdata->jIcapClass, jdata->jServiceConstructor);
     //create new HTTP headers array for java
-    jobjectArray jHeaders = (*jni)->NewObjectArray(jni,hdrs->used,jInstance,jstring);
+    jclass jClass_String = (*jni)->FindClass("java/lang/String");
+    jobjectArray jHeaders = (*jni)->NewObjectArray(jni,hdrs->used,jClass_String);
     int i;
     for(i=0;i<hdrs->used;i++) {
         (*jni)->SetObjectArrayElement(jni,i,jHeaders,(*jni)->NewStringUTF(hdrs->headers[i]));
     }
-    //int initialize(String,String[])
-    jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jInitialize, (*jni)->NewStringUTF(METHOD_TYPE), jHeaders);
-    if (status) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not zero.", mod_name);
-        return NULL;
-    }
+    //create instance.
+    jobject jInstance = (*jni)->NewObject(jni, jdata->jIcapClass, jdata->jServiceConstructor,METHOD_TYPE,jHeaders);
     jServiceData->instance = jInstance;
     return (void *)jServiceData;
 }
@@ -418,9 +419,11 @@ int java_check_preview_handler(char * preview_data, int preview_data_len, ci_req
     jData_t * jdata = jServiceData.jdata;
     jobject jInstance = jServiceData->instance;
     //preview(byte[], java.lang.String[])
-    jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jPreview, jni->, jHeaders);
+    jbyteArray headers = (*jni)->NewByteArray(jni,preview_data_len);
+    (*jni)->SetBy
+    jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jPreview, (*jni)->New);
     if (status) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not zero.", mod_name);
+        cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not %s.", CI_OK);
         return NULL;
     }
     //check preview data
