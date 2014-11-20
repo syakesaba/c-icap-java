@@ -49,15 +49,15 @@ typedef struct jDataStruct {
     JavaVM * jvm;
     jclass jIcapClass;
     char * name;
-    int mod_type;
-    jmethodID jServiceConstructor;
-    jmethodID jPreview;
-    jmethodID jService;
+    jmethodID jServiceConstructor;//Constructor
+    jmethodID jPreview;//preview()
+    jmethodID jService;//service()
 } jData_t;
 
 typedef struct jServiceDataStruct {
     jData_t * jdata;//includes JVM
     jobject instance;
+    ci_membuf_t * buffer;
 } jServiceData_t;
 
 int init_java_handler(struct ci_server_conf * server_conf);
@@ -284,11 +284,12 @@ FAIL_TO_LOAD_SERVICE:
  */
 int killVM(void *data, const char *name, const void * value) {
     const jData_t * jdata = (jData_t *)value;
-    const char * icapName = jdata->name;
-    free((void *)icapName);
+    JNIEnv * jni = jdata->jni;
+    (*jni)->DeleteLocalRef(jdata->jIcapClass);
+    free(jdata->name);
     JavaVM * jvm = (jdata->jvm);
     jint ret = (*jvm)->DestroyJavaVM(jvm);
-    free((void *)jdata);
+    free(jdata);
     return ret;
 }
 
@@ -373,6 +374,7 @@ void * java_init_request_data(ci_request_t * req) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Dropping request...");
         return NULL;
     }
+
     //retribute Java environment from mod_name
     const char * mod_name = (req->current_service_mod)->mod_name;
     jData_t * jdata = (jData_t *)ci_dyn_array_search(enviroments, mod_name);
@@ -384,19 +386,40 @@ void * java_init_request_data(ci_request_t * req) {
 
     //attach service instance to JVM
     jServiceData->jdata = jdata;
-
     JNIEnv * jni = jdata->jni;
+
     //create new HTTP headers array for java
     jclass jClass_String = (*jni)->FindClass("java/lang/String");
     jobjectArray jHeaders = (*jni)->NewObjectArray(jni,hdrs->used,jClass_String);
-    int i;
-    //なんかUTF的な処理がいる？
-    for(i=0;i<hdrs->used;i++) {
-        (*jni)->SetObjectArrayElement(jni,i,jHeaders,(*jni)->NewStringUTF(hdrs->headers[i]));
+    if (jHeaders == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Could not allocate memory for http headers. ignoring...");
+        return NULL;
     }
+    (*jni)->DeleteLocalRef(jni, jClass_String);
+    int i;
+    for(i=0;i<hdrs->used;i++) {
+        jstring buf = (*jni)->NewStringUTF(hdrs->headers[i]);
+        if (buf == NULL) {
+            cij_debug_printf(CIJ_ERROR_LEVEL, "Could not allocate memory for http headers string. ignoring...");
+            return NULL;
+        }
+        (*jni)->SetObjectArrayElement(jni,i,jHeaders,buf);
+        (*jni)->DeleteLocalRef(jni, buf);
+    }
+
     //create instance.
     jobject jInstance = (*jni)->NewObject(jni, jdata->jIcapClass, jdata->jServiceConstructor,METHOD_TYPE,jHeaders);
-    jServiceData->instance = jInstance;
+    (*jni)->DeleteLocalRef(jHeaders);
+    if (jInstance == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Could not create instance of the class '%s'. Method='%s'. ignoring...", mod_name, METHOD_TYPE);
+        return NULL;
+    }
+    jServiceData->instance = jInstance;//+REF
+    ci_membuf_t * buffer = ci_membuf_new();
+    if (buffer == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Could not allocate memory for http body ignoring...");
+        return NULL;
+    }
     return (void *)jServiceData;
 }
 
@@ -412,16 +435,26 @@ void * java_init_request_data(ci_request_t * req) {
  * @param preview_data preview body.
  * @param preview_data_len preview body byte length.
  * @param req a pointer of request data.
- * @return CI_MOD_ALLOW204 if unhook the request. CI_MOD_CONTINUE if hook the request.
+ * @return CI_MOD_ALLOW204 if unhook the request. CI_MOD_CONTINUE if hook the request. CI_ERROR if an error ocur.
  */
 int java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req) {
     jServiceData_t * jServiceData = (jServiceData_t *)ci_service_data(req);
     JNIEnv * jni = jServiceData->jdata->jni;
     jData_t * jdata = jServiceData.jdata;
     jobject jInstance = jServiceData->instance;
-    //preview(byte[], java.lang.String[])
-    jbyteArray headers = (*jni)->NewByteArray(jni,preview_data_len);
-    (*jni)->SetBy
+
+    //convert C-char* to Java-byte[]
+    jbyteArray jba = (*jni)->NewByteArray(jni, preview_data_len);
+    if (jba == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Could not allocate memory for preview_data byte array object. ignoring...");
+        return CI_ERROR;
+    }
+    int i;
+    for (i=0; i<preview_data_len; i++) {
+        (*jni)->SetByteArrayRegion
+    }
+
+    //int preview(byte[])
     jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jPreview, (*jni)->New);
     if (status) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not %s.", CI_OK);
@@ -493,6 +526,7 @@ void java_release_request_data(void * data) {
     jServiceData_t * jServiceData = (jServiceData_t *)data;
     JNIEnv * jni = (jServiceData->jdata)->jni;
     (*jni)->DeleteLocalRef(jni, jServiceData->instance);
+    free(jServiceData);
 }
 
 /**
