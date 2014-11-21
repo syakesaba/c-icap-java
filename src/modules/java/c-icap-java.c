@@ -97,7 +97,7 @@ const char * JAVA_CLASS_PATH;
 const char * JAVA_LIBRARY_PATH;
 
 /**
- * Called When c-icap proccess start.<br>
+ * Called When c-icap process start.<br>
  * prev = none<br>
  * next = load_java_module(char * service_file)<br>
  *
@@ -289,6 +289,9 @@ int killVM(void *data, const char *name, const void * value) {
     free(jdata->name);
     JavaVM * jvm = (jdata->jvm);
     jint ret = (*jvm)->DestroyJavaVM(jvm);
+    if (ret != JNI_OK) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Some error occurred");
+    }
     free(jdata);
     return ret;
 }
@@ -303,6 +306,8 @@ int killVM(void *data, const char *name, const void * value) {
 void release_java_handler() {
     //iterate and kill all JavaVMs
     ci_dyn_array_iterate(enviroments, NULL, killVM);
+
+    ci_dyn_array_destroy(enviroments);
     return;
 }
 
@@ -330,7 +335,7 @@ int java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * se
  *
  * @see post_init_java_handler(struct ci_server_conf * server_conf)
  * @param srv_xdata a pointer holds service parameter.
- * @param server_conf a pointer of server config.
+ * @param server_conf a pointer of server configuration.
  * @return CI_SERVICE_OK
  */
 int java_post_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf) {
@@ -366,7 +371,7 @@ void * java_init_request_data(ci_request_t * req) {
         return NULL;//pass
     }
 
-    //create service_data
+    //Create service_data
     jServiceData_t * jServiceData = NULL;
     jServiceData = (jServiceData_t *)malloc(sizeof(jServiceData_t));
     if (jServiceData == NULL) {
@@ -375,7 +380,7 @@ void * java_init_request_data(ci_request_t * req) {
         return NULL;
     }
 
-    //retribute Java environment from mod_name
+    //Get Java environment from mod_name
     const char * mod_name = (req->current_service_mod)->mod_name;
     jData_t * jdata = (jData_t *)ci_dyn_array_search(enviroments, mod_name);
     if (jdata == NULL) {
@@ -384,13 +389,13 @@ void * java_init_request_data(ci_request_t * req) {
         return NULL;
     }
 
-    //attach service instance to JVM
+    //Attach service instance to JVM
     jServiceData->jdata = jdata;
     JNIEnv * jni = jdata->jni;
 
-    //create new HTTP headers array for java
-    jclass jClass_String = (*jni)->FindClass("java/lang/String");
-    jobjectArray jHeaders = (*jni)->NewObjectArray(jni,hdrs->used,jClass_String);
+    //Create new HTTP headers array for java
+    jclass jClass_String = (*jni)->FindClass(jni, "java/lang/String");
+    jobjectArray jHeaders = (*jni)->NewObjectArray(jni, hdrs->used, jClass_String, NULL);
     if (jHeaders == NULL) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Could not allocate memory for http headers. ignoring...");
         return NULL;
@@ -398,18 +403,18 @@ void * java_init_request_data(ci_request_t * req) {
     (*jni)->DeleteLocalRef(jni, jClass_String);
     int i;
     for(i=0;i<hdrs->used;i++) {
-        jstring buf = (*jni)->NewStringUTF(hdrs->headers[i]);
+        jstring buf = (*jni)->NewStringUTF(jni, hdrs->headers[i]);
         if (buf == NULL) {
             cij_debug_printf(CIJ_ERROR_LEVEL, "Could not allocate memory for http headers string. ignoring...");
             return NULL;
         }
-        (*jni)->SetObjectArrayElement(jni,i,jHeaders,buf);
+        (*jni)->SetObjectArrayElement(jni, jHeaders, i, buf);
         (*jni)->DeleteLocalRef(jni, buf);
     }
 
-    //create instance.
+    //Create instance.
     jobject jInstance = (*jni)->NewObject(jni, jdata->jIcapClass, jdata->jServiceConstructor,METHOD_TYPE,jHeaders);
-    (*jni)->DeleteLocalRef(jHeaders);
+    (*jni)->DeleteLocalRef(jni, jHeaders);
     if (jInstance == NULL) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Could not create instance of the class '%s'. Method='%s'. ignoring...", mod_name, METHOD_TYPE);
         return NULL;
@@ -435,12 +440,12 @@ void * java_init_request_data(ci_request_t * req) {
  * @param preview_data preview body.
  * @param preview_data_len preview body byte length.
  * @param req a pointer of request data.
- * @return CI_MOD_ALLOW204 if unhook the request. CI_MOD_CONTINUE if hook the request. CI_ERROR if an error ocur.
+ * @return CI_MOD_ALLOW204 if unhooks the request. CI_MOD_CONTINUE if hook the request. CI_ERROR if an error occurred.
  */
 int java_check_preview_handler(char * preview_data, int preview_data_len, ci_request_t * req) {
     jServiceData_t * jServiceData = (jServiceData_t *)ci_service_data(req);
-    JNIEnv * jni = jServiceData->jdata->jni;
-    jData_t * jdata = jServiceData.jdata;
+    jData_t * jdata = jServiceData->jdata;
+    JNIEnv * jni = jdata->jni;
     jobject jInstance = jServiceData->instance;
 
     //convert C-char* to Java-byte[]
@@ -450,12 +455,10 @@ int java_check_preview_handler(char * preview_data, int preview_data_len, ci_req
         return CI_ERROR;
     }
     int i;
-    for (i=0; i<preview_data_len; i++) {
-        (*jni)->SetByteArrayRegion
-    }
+   //:******* (*jni)->SetByteArrayRegion(jni, preview_data, START_INDEX, jba, preview_data_len);
 
-    //int preview(byte[])
-    jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jPreview, (*jni)->New);
+    //Call int preview(byte[])
+    jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jPreview, jba);
     if (status) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not %s.", CI_OK);
         return NULL;
