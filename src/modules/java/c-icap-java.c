@@ -62,7 +62,7 @@ typedef struct jServiceDataStruct {
 
 int init_java_handler(struct ci_server_conf * server_conf);
 int post_init_java_handler(struct ci_server_conf * server_conf);
-ci_service_module_t * load_java_module(char * service_file);
+ci_service_module_t * load_java_module(const char * service_file);
 void release_java_handler();
 
 int java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf);
@@ -135,7 +135,7 @@ int post_init_java_handler(struct ci_server_conf * server_conf) {
  * @param service_file
  * @return
  */
-ci_service_module_t * load_java_module(char * service_file) {
+ci_service_module_t * load_java_module(const char * service_file) {
     ci_service_module_t * service = NULL;
     jData_t * jdata = NULL;
     service = malloc(sizeof(ci_service_module_t));//FREEME
@@ -170,7 +170,7 @@ ci_service_module_t * load_java_module(char * service_file) {
     jvmInitArgs.nOptions = 1; //TODO:CLASSPATH,VERSION,...
     jvmInitArgs.version = JNI_VERSION_1_6;
     jvmInitArgs.ignoreUnrecognized = JNI_FALSE;
-    jint ret = JNI_CreateJavaVM(&(jdata->jvm), (void **)&(jdata->jni), &jvmInitArgs);
+    ret = JNI_CreateJavaVM(&(jdata->jvm), (void **)&(jdata->jni), &jvmInitArgs);
     free(options[0].optionString);
     if (ret != JNI_OK) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to setup JavaVM(%d).", ret);
@@ -285,7 +285,7 @@ FAIL_TO_LOAD_SERVICE:
 int killVM(void *data, const char *name, const void * value) {
     const jData_t * jdata = (jData_t *)value;
     JNIEnv * jni = jdata->jni;
-    (*jni)->DeleteLocalRef(jdata->jIcapClass);
+    (*jni)->DeleteLocalRef(jni,jdata->jIcapClass);
     free(jdata->name);
     JavaVM * jvm = (jdata->jvm);
     jint ret = (*jvm)->DestroyJavaVM(jvm);
