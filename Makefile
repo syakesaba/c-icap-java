@@ -4,7 +4,7 @@ FLAGS =
 CFLAGS = -fPIC -Wall -O2
 
 #c-icap-java.c
-LDFLAGS= -shared #-llibicapapi
+LDFLAGS= -shared -licapapi
 SOURCE = src/modules/java/c-icap-java.c
 TARGET  = c-icap-java.so
 ifndef $(JAVA_HOME)
