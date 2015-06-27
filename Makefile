@@ -1,32 +1,41 @@
 # Makefile2
-CC = gcc
-FLAGS =
-CFLAGS = -fPIC -Wall -O2
+CC ?= gcc
+FLAGS +=
+CFLAGS ?= -fPIC -Wall -O2
+OS = $(shell uname -s | tr '[A-Z]' '[a-z]')
+
+ifeq ("$(OS)", "darwin")
+JAVA_HOME ?= $(shell /usr/libexec/java_home)
+JAVA_HEADERS ?= /System/Library/Frameworks/JavaVM.framework/Versions/A/Headers
+#JAVA_HEADERS?=/Developer/SDKs/MacOSX10.6.sdk/System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Headers/
+endif
+
+ifeq ("$(OS)", "linux")
+JAVA_HOME ?= $(shell readlink -f /usr/bin/javac | sed "s:bin/javac::")
+JAVA_HEADERS ?= $(JAVA_HOME)/include -I$(JAVA_HOME)/include/linux
+endif
 
 #c-icap-java.c
-LDFLAGS= -shared -licapapi
-SOURCE = src/modules/java/c-icap-java.c
-TARGET  = c-icap-java.so
-ifndef $(JAVA_HOME)
-	JAVA_HOME = /usr/lib/jvm/java-6-openjdk-amd64
-endif
-INCLUDES = -I$(JAVA_HOME)/include/
+LDFLAGS += -shared -licapapi
+SOURCE := src/modules/java/c-icap-java.c
+TARGET := c-icap-java.so
+INCLUDES += -I$(JAVA_HEADERS)
 
 #doc need doxygen
-DOXYGEN = doxygen
-DOXYFILE = c-icap-java.Doxyfile
-DOXYGEN_TARGET_SRC = src
-DOXYGEN_TARGET = doc
+DOXYGEN := doxygen
+DOXYFILE := c-icap-java.Doxyfile
+DOXYGEN_TARGET_SRC := src
+DOXYGEN_TARGET := doc
 
 #flow need graphviz
-DOT = dot
-DOT_TARGET = flow.dot
-DOT_OPTIONS = -Tjpg
+DOT := dot
+DOT_TARGET := flow.dot
+DOT_OPTIONS ?= -Tjpg
+
+all: $(TARGET)
 
 install:$(TARGET)
 	$(info not-impremented-yet)
-
-all: $(TARGET)
 
 $(TARGET): $(SOURCE)
 	$(CC) $(FLAGS) $(CFLAGS) $(LDFLAGS) -o $(TARGET) $< $(INCLUDES)
