@@ -16,7 +16,7 @@ INCLUDES = -I$(JAVA_HOME)/include/
 DOXYGEN = doxygen
 DOXYFILE = c-icap-java.Doxyfile
 DOXYGEN_TARGET_SRC = src
-DOXYGEN_TARGET = html/ latex/
+DOXYGEN_TARGET = doc
 
 #flow need graphviz
 DOT = dot
@@ -31,8 +31,8 @@ all: $(TARGET)
 $(TARGET): $(SOURCE)
 	$(CC) $(FLAGS) $(CFLAGS) $(LDFLAGS) -o $(TARGET) $< $(INCLUDES)
 
-doc: $(DOXYFILE)
-	$(DOXYGEN) $(DOXYGEN_TARGET_SRC)
+doc: $(DOXYGEN_TARGET_SRC) $(DOXYFILE)
+	$(DOXYGEN) $(DOXYFILE)
 
 flow: $(DOT_TARGET)
 	$(DOT) $(DOT_OPTIONS) $(DOT_TARGET) -o $(DOT_TARGET:.dot=.jpg)
