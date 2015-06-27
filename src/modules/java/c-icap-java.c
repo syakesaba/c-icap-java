@@ -217,7 +217,7 @@ ci_service_module_t * load_java_module(const char * service_file) {
     {
     jmethodID preview = (*jni)->GetMethodID(jni, cls, "preview", "([B)I");
     if (preview == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'preview(byte[])'.");
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'int preview(byte[])'.");
         goto FAIL_TO_LOAD_SERVICE;
     }
     jdata->jPreview = preview;
@@ -226,7 +226,7 @@ ci_service_module_t * load_java_module(const char * service_file) {
     {
     jmethodID service = (*jni)->GetMethodID(jni, cls, "service", "([B)[B");
     if (service == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'service(byte[], java.lang.String[])'.");
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find method 'byte[] service(byte[])'.");
         goto FAIL_TO_LOAD_SERVICE;
     }
     jdata->jService = service;

@@ -23,6 +23,9 @@ DOT = dot
 DOT_TARGET = flow.dot
 DOT_OPTIONS = -Tjpg
 
+install:$(TARGET)
+	$(info not-impremented-yet)
+
 all: $(TARGET)
 
 $(TARGET): $(SOURCE)
@@ -33,6 +36,10 @@ doc: $(DOXYFILE)
 
 flow: $(DOT_TARGET)
 	$(DOT) $(DOT_OPTIONS) $(DOT_TARGET) -o $(DOT_TARGET:.dot=.jpg)
+
+.PHONY: uninstall 
+uninstall:
+	$(info not-impremented-yet)
 
 .PHONY: clean
 clean:
