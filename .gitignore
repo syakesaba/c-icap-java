@@ -45,3 +45,9 @@ bin/
 *.i*86
 *.x86_64
 *.hex
+
+# cloud9
+*.c9
+
+# doc
+doc

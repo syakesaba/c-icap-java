@@ -99,9 +99,9 @@ const char * JAVA_LIBRARY_PATH;
 /**
  * Called When c-icap process start.<br>
  * prev = none<br>
- * next = load_java_module(char * service_file)<br>
+ * next = load_java_module(const char * service_file)<br>
  *
- * @see load_java_module(char * service_file)
+ * @see load_java_module(const char * service_file)
  * @param server_conf a pointer to the server configurations.
  * @return CI_OK
  */
