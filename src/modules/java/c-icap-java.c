@@ -138,28 +138,40 @@ int post_init_java_handler(struct ci_server_conf * server_conf) {
 ci_service_module_t * load_java_module(const char * service_file) {
     ci_service_module_t * service = NULL;
     jData_t * jdata = NULL;
-    service = malloc(sizeof(ci_service_module_t));//FREEME
-    jdata = malloc(sizeof(jData_t));//FREEME
-    if (service == NULL || jdata == NULL) {
+    service = (ci_service_module_t *)malloc(sizeof(ci_service_module_t));//FREEME
+    if (service == NULL) {
         cij_debug_printf(CIJ_ERROR_LEVEL,"Failed to allocate memory for service %s",service_file);
         return NULL;
     }
+    jdata = (jData_t *)malloc(sizeof(jData_t));//FREEME
+    if (jdata == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL,"Failed to allocate memory for service %s",service_file);
+        free(service);
+        return NULL;
+    }
 
-    //set service file name to SERVICE NAME
-    const char * service_file_name = basename(service_file);
-    char * name = strndup(service_file_name, MAX_SERVICE_NAME);//FREEME
-    name[strnlen(name, MAX_SERVICE_NAME)-strnlen(".class", MAX_SERVICE_NAME)] = '\0';//strip ".class"
-    jdata->name = name;
+    {//set service file name to SERVICE NAME
+    const char * service_file_name = basename(service_file);// increase pointer to the next of last "/"(in *nixOS) or "\"(in windowsOS)
+    char * name = strndup(service_file_name, MAX_SERVICE_NAME);//duplicate filename string
+    if (name == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL,"Failed to allocate memory for service %s",service_file);
+        free(service);
+        free(jdata);
+        return NULL;
+    }
+    name[strnlen(name, MAX_SERVICE_NAME)-strnlen(".class", MAX_SERVICE_NAME)] = '\0';//strip ".class" from the file
+    jdata->name = name;//FREEME
+    }
 
-    {
-    //set CLASSPATH
-    JavaVMOption options[1];
+    {//set CLASSPATH
+    #define NUM_JavaVMOptions 1
+    JavaVMOption options[NUM_JavaVMOptions];
     int ret = asprintf(options[0].optionString, "-Djava.class.path=%s",JAVA_CLASS_PATH);//FREEME
     //"-verbose:jni";
     //"-Djava.library.path=%s.jar"
 
     if (ret < 0) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to allocate memory for service '%s'.", name);
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to allocate memory for service '%s'.", jdata->name);
         free(options[0].optionString);
         goto FAIL_TO_LOAD_SERVICE;
     }
@@ -183,7 +195,7 @@ ci_service_module_t * load_java_module(const char * service_file) {
     //find class
     {
     const char className[MAX_CLASS_NAME];
-    if (snprintf(className, "L%s;", name) < 0) {
+    if (snprintf(className, "L%s;", jdata->name) < 0) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to setup className string for java class '%s'.", className);
         goto FAIL_TO_LOAD_SERVICE;
     }
@@ -208,7 +220,7 @@ ci_service_module_t * load_java_module(const char * service_file) {
     {
     jmethodID init = (*jni)->GetMethodID(jni, cls, "<init>", "(Ljava/lang/String;[Ljava/lang/String;)V");
     if (init == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method '%s()'.", name);
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to find constructor method '%s()'.", jdata->name);
         goto FAIL_TO_LOAD_SERVICE;
     }
     jdata->jServiceConstructor = init;
@@ -255,17 +267,17 @@ ci_service_module_t * load_java_module(const char * service_file) {
     service->mod_check_preview_handler = java_check_preview_handler;
     service->mod_end_of_data_handler = java_end_of_data_handler;
     service->mod_service_io = java_service_io;
-    service->mod_name = name;
+    service->mod_name = jdata->name;
     service->mod_type = ICAP_REQMOD | ICAP_RESPMOD;
     cij_debug_printf(CIJ_MESSAGE_LEVEL, "OK service %s loaded\n", service_file);
-    if (ci_dyn_array_add(enviroments, name, jdata, sizeof(jData_t *)) == NULL) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed adding service '%s' to dyn-array.", name);
+    if (ci_dyn_array_add(enviroments, jdata->name, jdata, sizeof(jData_t *)) == NULL) {
+        cij_debug_printf(CIJ_ERROR_LEVEL, "Failed adding service '%s' to dyn-array.", jdata->name);
         goto FAIL_TO_LOAD_SERVICE;
     }
     return service;
 
 FAIL_TO_LOAD_SERVICE:
-    free(name);
+    free(jdata->name);
     free(service);
     free(jdata);
     cij_debug_printf(CIJ_ERROR_LEVEL, "Fail at loading service '%s'",service_file);
