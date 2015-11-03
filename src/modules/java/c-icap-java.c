@@ -134,7 +134,7 @@ int post_init_java_handler(struct ci_server_conf * server_conf) {
  *
  * @see init_java_handler(struct ci_server_conf * server_conf)
  * @see java_init_service(ci_service_xdata_t * srv_xdata, struct ci_server_conf * server_conf)
- * @param service_file
+ * @param service_file not to 'free'? idk...
  * @return
  */
 ci_service_module_t * load_java_module(const char * service_file) {

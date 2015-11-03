@@ -4,7 +4,7 @@
 Graphviz - DOT language writing!
 */
 digraph Diagram {
-    PROFILE [label = "c-icap-java の フロー", shape=none];
+    PROFILE [label = "The Flow diagram of c-icap-java", shape=none];
     nodesep=0.1;
     //デフォルトノード
     node [fontsize=10];
@@ -14,11 +14,11 @@ digraph Diagram {
 
     START [shape=doublecircle]
 
-    START -> init_handler [label="サーバ起動"]
+    START -> init_handler [label="Server start"]
 
     //c-icap module
     subgraph clusterModuleFunctions {
-        label = "モジュール側";
+        label = "Module side";
         style = bold;
         init_handler [label="init_java_handler"];
         load_module [label="load_java_module"];
@@ -27,12 +27,12 @@ digraph Diagram {
     }
     //c-icap service
     subgraph clusterServiceFunctions {
-        label = "サービス側";
+        label = "Service side";
         init_service [label="java_init_java_service"];
         post_init_service [label="java_post_init_java_service"];
 
         subgraph clusterRunningFunctions {
-            label = "実行部";
+            label = "execution";
             init_request_data [label="java_init_request_data"];
             check_preview_handler [label="java_check_preview_handler"];
             service_io [label="java_service_io"];
@@ -43,7 +43,7 @@ digraph Diagram {
         close_service [label="java_close_service"];
     }
 
-    {edge[style=invis]; //透明アローで、配置を近くする
+    {edge[style=invis]; //inivisible allow fix layout.
         {init_handler load_module} -> {init_service post_init_service};
     }
 
@@ -62,7 +62,7 @@ digraph Diagram {
         service_io -> end_of_data [label=""];
         end_of_data -> release_request_data [label=""];
 
-        release_request_data -> init_request_data [label="ICAPリクエスト到着ループ"];//ループ
+        release_request_data -> init_request_data [label="ICAP request loop"];//ループ
     }
 
     SIGTERM [shape=doublecircle, label="TEMRINATE"]
@@ -74,7 +74,7 @@ digraph Diagram {
 
     END [shape=doublecircle];
 
-    release_handler -> END [label="サーバの停止"];
+    release_handler -> END [label="Server stop"];
 
     { rank=same; START END } //配置を一緒の階層にする
 
