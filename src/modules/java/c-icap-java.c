@@ -6,6 +6,8 @@
  * @date 2014-10-01
  */
 
+#define _GNU_SOURCE //use GNU version of basename()
+#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -89,7 +91,7 @@ CI_DECLARE_DATA service_handler_module_t module = {
     NULL // TODO: conf-table
 };
 
-ci_dyn_array_t * enviroments; //JVM environments
+ci_dyn_array_t * environments; //JVM environments
 #define MAX_ENVIRONMENTS_SIZE 256
 #define CIJ_CLASS_MOD_TYPE "MOD_TYPE"
 
@@ -106,7 +108,7 @@ const char * JAVA_LIBRARY_PATH;
  * @return CI_OK
  */
 int init_java_handler(struct ci_server_conf * server_conf) {
-    enviroments = ci_dyn_array_new(MAX_ENVIRONMENTS_SIZE);//FREEME
+    environments = ci_dyn_array_new(MAX_ENVIRONMENTS_SIZE);//FREEME
     JAVA_CLASS_PATH = server_conf->SERVICES_DIR;
     return CI_OK;
 }
@@ -164,25 +166,24 @@ ci_service_module_t * load_java_module(const char * service_file) {
     }
 
     {//set CLASSPATH
-    #define NUM_JavaVMOptions 1
-    JavaVMOption options[NUM_JavaVMOptions];
-    int ret = asprintf(options[0].optionString, "-Djava.class.path=%s",JAVA_CLASS_PATH);//FREEME
+    #define NUM_JVM_OPTIONS 1
+    JavaVMOption options[NUM_JVM_OPTIONS];
+    int ret = asprintf(&(options[0].optionString), "-Djava.class.path=%s",JAVA_CLASS_PATH);//FREEME
     //"-verbose:jni";
     //"-Djava.library.path=%s.jar"
 
-    if (ret < 0) {
+    if (ret < 0) { // asprintf always returns -1 if some error occured.
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to allocate memory for service '%s'.", jdata->name);
-        free(options[0].optionString);
         goto FAIL_TO_LOAD_SERVICE;
     }
 
     //create VM
     JavaVMInitArgs jvmInitArgs;
     jvmInitArgs.options = options;
-    jvmInitArgs.nOptions = 1; //TODO:CLASSPATH,VERSION,...
+    jvmInitArgs.nOptions = NUM_JVM_OPTIONS; //TODO:CLASSPATH,VERSION,...
     jvmInitArgs.version = JNI_VERSION_1_6;
     jvmInitArgs.ignoreUnrecognized = JNI_FALSE;
-    ret = JNI_CreateJavaVM(&(jdata->jvm), (void **)&(jdata->jni), &jvmInitArgs);
+    ret = JNI_CreateJavaVM(&(jdata->jvm), (void **)&(jdata->jni), (void *)(&jvmInitArgs));
     free(options[0].optionString);
     if (ret != JNI_OK) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to setup JavaVM(%d).", ret);
@@ -194,8 +195,8 @@ ci_service_module_t * load_java_module(const char * service_file) {
 
     //find class
     {
-    const char className[MAX_CLASS_NAME];
-    if (snprintf(className, "L%s;", jdata->name) < 0) {
+    char className[MAX_CLASS_NAME];
+    if (snprintf(className, MAX_CLASS_NAME, "L%s;", jdata->name) < 0) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed to setup className string for java class '%s'.", className);
         goto FAIL_TO_LOAD_SERVICE;
     }
@@ -270,7 +271,7 @@ ci_service_module_t * load_java_module(const char * service_file) {
     service->mod_name = jdata->name;
     service->mod_type = ICAP_REQMOD | ICAP_RESPMOD;
     cij_debug_printf(CIJ_MESSAGE_LEVEL, "OK service %s loaded\n", service_file);
-    if (ci_dyn_array_add(enviroments, jdata->name, jdata, sizeof(jData_t *)) == NULL) {
+    if (ci_dyn_array_add(environments, jdata->name, jdata, sizeof(jData_t *)) == NULL) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Failed adding service '%s' to dyn-array.", jdata->name);
         goto FAIL_TO_LOAD_SERVICE;
     }
@@ -281,7 +282,6 @@ FAIL_TO_LOAD_SERVICE:
     free(service);
     free(jdata);
     cij_debug_printf(CIJ_ERROR_LEVEL, "Fail at loading service '%s'",service_file);
-    ci_dyn_array_destroy(enviroments);
     return NULL;
 }
 
@@ -295,7 +295,7 @@ FAIL_TO_LOAD_SERVICE:
  * @return JNI_OK = 0 if success
  */
 int killVM(void *data, const char *name, const void * value) {
-    const jData_t * jdata = (jData_t *)value;
+    jData_t * jdata = (jData_t *)value;
     JNIEnv * jni = jdata->jni;
     (*jni)->DeleteLocalRef(jni,jdata->jIcapClass);
     free(jdata->name);
@@ -317,9 +317,9 @@ int killVM(void *data, const char *name, const void * value) {
  */
 void release_java_handler() {
     //iterate and kill all JavaVMs
-    ci_dyn_array_iterate(enviroments, NULL, killVM);
+    ci_dyn_array_iterate(environments, NULL, killVM);
 
-    ci_dyn_array_destroy(enviroments);
+    ci_dyn_array_destroy(environments);
     return;
 }
 
@@ -394,7 +394,7 @@ void * java_init_request_data(ci_request_t * req) {
 
     //Get Java environment from mod_name
     const char * mod_name = (req->current_service_mod)->mod_name;
-    jData_t * jdata = (jData_t *)ci_dyn_array_search(enviroments, mod_name);
+    jData_t * jdata = (jData_t *)ci_dyn_array_search(environments, mod_name);
     if (jdata == NULL) {
         cij_debug_printf(CIJ_ERROR_LEVEL, "Invalid mod_name %s is not in environments array.", mod_name);
         free(jServiceData);
@@ -466,14 +466,14 @@ int java_check_preview_handler(char * preview_data, int preview_data_len, ci_req
         cij_debug_printf(CIJ_ERROR_LEVEL, "Could not allocate memory for preview_data byte array object. ignoring...");
         return CI_ERROR;
     }
-    int i;
+    //int i;
    //:******* (*jni)->SetByteArrayRegion(jni, preview_data, START_INDEX, jba, preview_data_len);
 
     //Call int preview(byte[])
     jint status = (*jni)->CallIntMethod(jni, jInstance, jdata->jPreview, jba);
     if (status) {
-        cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not %s.", CI_OK);
-        return NULL;
+        cij_debug_printf(CIJ_ERROR_LEVEL, "%s.initialize(...) returned not %d.", jdata->name, CI_OK);
+        return CI_ERROR;
     }
     //check preview data
     //hasbody
