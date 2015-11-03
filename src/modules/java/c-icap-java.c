@@ -326,8 +326,8 @@ void release_java_handler() {
 /**
  * Called after load_java_module(char * service_file) .<br>
  * initialize service OPTIONS parameter.<br>
- * prev = load_java_module(char * service_file)<br>
- * next =post_init_java_handler(struct ci_server_conf * server_conf)<br>
+ * prev = load_java_module(const char * service_file)<br>
+ * next = post_init_java_handler(struct ci_server_conf * server_conf)<br>
  *
  * @param srv_xdata a pointer holds service parameter.
  * @param server_conf a pointer of server config.
