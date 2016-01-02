@@ -1,7 +1,7 @@
 # Makefile2
 CC ?= gcc
 FLAGS +=
-CFLAGS ?= -fPIC -Wall -O2
+CFLAGS ?= -fPIC -Wall -O2 -DDEBUG
 OS = $(shell uname -s | tr '[A-Z]' '[a-z]')
 
 ifeq ("$(OS)", "darwin")

@@ -31,8 +31,8 @@
 #define CIJ_DEBUG_LEVEL CI_DEBUG_LEVEL
 
 //---DEBUG util
-#if 1
-    #define cij_debug_printf(lev,msg, ...) ci_debug_printf(1, "(%d):%s():L%04d: "msg"\n", getpid(), __func__, __LINE__, ## __VA_ARGS__)
+#ifdef DEBUG
+    #define cij_debug_printf(lev,msg, ...) ci_debug_printf(CIJ_ERROR_LEVEL, "(%d):%s():L%04d: "msg"\n", getpid(), __func__, __LINE__, ## __VA_ARGS__)
 #else
     #define cij_debug_printf(lev,msg, ...) ci_debug_printf(lev, "CIJ:"msg"\n", ## __VA_ARGS__)
 #endif
